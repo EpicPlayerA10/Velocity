@@ -65,7 +65,8 @@ public class BungeeCordMessageResponder {
   private final MinecraftSessionHandler minecraftSessionHandler;
   private final ConnectedPlayer player;
 
-  BungeeCordMessageResponder(VelocityServer proxy, MinecraftSessionHandler minecraftSessionHandler, ConnectedPlayer player) {
+  BungeeCordMessageResponder(VelocityServer proxy, MinecraftSessionHandler minecraftSessionHandler,
+                             ConnectedPlayer player) {
     this.proxy = proxy;
     this.minecraftSessionHandler = minecraftSessionHandler;
     this.player = player;
