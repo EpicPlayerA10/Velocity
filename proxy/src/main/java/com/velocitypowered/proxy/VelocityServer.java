@@ -37,6 +37,7 @@ import com.velocitypowered.api.util.Favicon;
 import com.velocitypowered.api.util.GameProfile;
 import com.velocitypowered.api.util.ProxyVersion;
 import com.velocitypowered.proxy.command.VelocityCommandManager;
+import com.velocitypowered.proxy.command.builtin.CallbackCommand;
 import com.velocitypowered.proxy.command.builtin.GlistCommand;
 import com.velocitypowered.proxy.command.builtin.SendCommand;
 import com.velocitypowered.proxy.command.builtin.ServerCommand;
@@ -60,7 +61,6 @@ import com.velocitypowered.proxy.util.AddressUtil;
 import com.velocitypowered.proxy.util.ClosestLocaleMatcher;
 import com.velocitypowered.proxy.util.ResourceUtils;
 import com.velocitypowered.proxy.util.VelocityChannelRegistrar;
-import com.velocitypowered.proxy.util.bossbar.AdventureBossBarManager;
 import com.velocitypowered.proxy.util.ratelimit.Ratelimiter;
 import com.velocitypowered.proxy.util.ratelimit.Ratelimiters;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -151,7 +151,6 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
   private final AtomicBoolean shutdownInProgress = new AtomicBoolean(false);
   private boolean shutdown = false;
   private final VelocityPluginManager pluginManager;
-  private final AdventureBossBarManager bossBarManager;
 
   private final Map<UUID, ConnectedPlayer> connectionsByUuid = new ConcurrentHashMap<>();
   private final Map<String, ConnectedPlayer> connectionsByName = new ConcurrentHashMap<>();
@@ -173,7 +172,6 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
     servers = new ServerMap(this);
     serverListPingHandler = new ServerListPingHandler(this);
     this.options = options;
-    this.bossBarManager = new AdventureBossBarManager();
   }
 
   public KeyPair getServerKeyPair() {
@@ -226,8 +224,9 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
     cm.logChannelInformation();
 
     // Initialize commands first
-    commandManager.register("velocity", new VelocityCommand(this));
-    commandManager.register("server", new ServerCommand(this));
+    commandManager.register(VelocityCommand.create(this));
+    commandManager.register(CallbackCommand.create());
+    commandManager.register(ServerCommand.create(this));
     commandManager.register("shutdown", ShutdownCommand.command(this),
         "end", "stop");
     new GlistCommand(this).register();
@@ -255,6 +254,12 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
       this.cm.bind(new InetSocketAddress(configuration.getBind().getHostString(), port));
     } else {
       this.cm.bind(configuration.getBind());
+    }
+
+    final Boolean haproxy = this.options.isHaproxy();
+    if (haproxy != null) {
+      logger.debug("Overriding HAProxy protocol to {} from command line option", haproxy);
+      configuration.setProxyProtocol(haproxy);
     }
 
     if (configuration.isQueryEnabled()) {
@@ -654,7 +659,7 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
   public void unregisterConnection(ConnectedPlayer connection) {
     connectionsByName.remove(connection.getUsername().toLowerCase(Locale.US), connection);
     connectionsByUuid.remove(connection.getUniqueId(), connection);
-    bossBarManager.onDisconnect(connection);
+    connection.disconnected();
   }
 
   @Override
@@ -764,10 +769,6 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
     return audiences;
   }
 
-  public AdventureBossBarManager getBossBarManager() {
-    return bossBarManager;
-  }
-
   /**
    * Returns a Gson instance for use in serializing server ping instances.
    *
@@ -776,10 +777,10 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
    */
   public static Gson getPingGsonInstance(ProtocolVersion version) {
     if (version == ProtocolVersion.UNKNOWN
-        || version.compareTo(ProtocolVersion.MINECRAFT_1_20_3) >= 0) {
+        || version.noLessThan(ProtocolVersion.MINECRAFT_1_20_3)) {
       return MODERN_PING_SERIALIZER;
     }
-    if (version.compareTo(ProtocolVersion.MINECRAFT_1_16) >= 0) {
+    if (version.noLessThan(ProtocolVersion.MINECRAFT_1_16)) {
       return PRE_1_20_3_PING_SERIALIZER;
     }
     return PRE_1_16_PING_SERIALIZER;
